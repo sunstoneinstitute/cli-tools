@@ -1,0 +1,5 @@
+/bin/
+swift/.build/
+swift/.swiftpm/
+swift/Package.resolved
+.DS_Store

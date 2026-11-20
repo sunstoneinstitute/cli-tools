@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Usage: scripts/new-tool go|swift <name>
+set -euo pipefail
+lang=${1:-}; name=${2:-}
+[[ -n $name && ( $lang == go || $lang == swift ) ]] || { echo "usage: $0 go|swift <name>" >&2; exit 2; }
+cd "$(dirname "$0")/.."
+[[ -e go/cmd/$name || -e swift/Sources/$name ]] && { echo "tool '$name' already exists" >&2; exit 1; }
+
+if [[ $lang == go ]]; then
+  mkdir -p "go/cmd/$name"
+  cat > "go/cmd/$name/main.go" <<GO
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+)
+
+func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: $name [flags]\n")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	fmt.Println("$name")
+	os.Exit(0)
+}
+GO
+else
+  type=$(echo "$name" | awk -F'[-_]' '{for(i=1;i<=NF;i++) printf "%s", toupper(substr($i,1,1)) substr($i,2)}')
+  mkdir -p "swift/Sources/$name"
+  cat > "swift/Sources/$name/$type.swift" <<SWIFT
+import ArgumentParser
+
+@main
+struct $type: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "$name")
+
+    func run() throws {
+        print("$name")
+    }
+}
+SWIFT
+fi
+echo "created $lang tool '$name'"
