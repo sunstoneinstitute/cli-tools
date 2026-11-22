@@ -1,0 +1,20 @@
+class CliTools < Formula
+  desc "Sunstone Institute command-line tools"
+  homepage "https://github.com/sunstoneinstitute/cli-tools"
+  url "__URL__"
+  sha256 "__SHA256__"
+  head "https://github.com/sunstoneinstitute/cli-tools.git", branch: "main"
+
+__BOTTLE_BLOCK__
+  depends_on "go" => :build
+
+  def install
+    # Homebrew already sandboxes the build, and SwiftPM cannot nest its own sandbox.
+    system "make", "build", "SWIFT_FLAGS=--disable-sandbox"
+    bin.install Dir["bin/*"]
+  end
+
+  test do
+    assert_match "USAGE", shell_output("#{bin}/oidc-browser --help") if OS.mac?
+  end
+end

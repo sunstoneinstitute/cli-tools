@@ -2,7 +2,13 @@
 
 Sunstone CLI tools. Go tools build on macOS and Linux. Swift tools are macOS only.
 
-## Setup
+## Installation
+
+    brew install sunstoneinstitute/tap/cli-tools
+
+macOS on Apple Silicon gets prebuilt bottles. Elsewhere brew builds from source.
+
+## Development setup
 
     brew bundle                 # Go. Swift comes from Xcode or `xcode-select --install`.
 
@@ -23,3 +29,11 @@ Tool names must be unique across Go and Swift.
     make                            # build all tools into bin/ (Swift skipped on Linux)
     make test                       # go vet + go test, swift test
     make clean
+
+## Releasing
+
+Add user-facing changes to `## [Unreleased]` in CHANGELOG.md as you go. Run `/release` in Claude Code
+(or `scripts/release.py --bump <level>` with the changelog entry on stdin), then `git push && git push --tags`.
+The tag runs `.github/workflows/release.yml`: it builds macOS bottles, creates the GitHub release, and
+updates `Formula/cli-tools.rb` in [sunstoneinstitute/homebrew-tap](https://github.com/sunstoneinstitute/homebrew-tap).
+The formula template is `.github/homebrew/cli-tools.rb.template`.
