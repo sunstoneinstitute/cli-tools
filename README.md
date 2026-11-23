@@ -28,6 +28,7 @@ Tool names must be unique across Go and Swift.
     scripts/new-tool go <name>      # or: scripts/new-tool swift <name>
     make                            # build all tools into bin/ (Swift skipped on Linux)
     make test                       # go vet + go test, swift test
+    make sign                       # build, then Developer ID sign bin/* (macOS)
     make clean
 
 ## Releasing
@@ -36,4 +37,5 @@ Add user-facing changes to `## [Unreleased]` in CHANGELOG.md as you go. Run `/re
 (or `scripts/release.py --bump <level>` with the changelog entry on stdin), then `git push && git push --tags`.
 The tag runs `.github/workflows/release.yml`: it builds macOS bottles, creates the GitHub release, and
 updates `Formula/cli-tools.rb` in [sunstoneinstitute/homebrew-tap](https://github.com/sunstoneinstitute/homebrew-tap).
-The formula template is `.github/homebrew/cli-tools.rb.template`.
+Release bottles are signed with Developer ID and hardened runtime by `scripts/codesign`.
+Per-tool entitlements go in `macos/entitlements/<tool>.plist`. The formula template is `.github/homebrew/cli-tools.rb.template`.

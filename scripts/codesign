@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Usage: scripts/codesign <binary>...
+# Signs with the Developer ID identity and hardened runtime. A tool's
+# entitlements come from macos/entitlements/<tool>.plist when it exists.
+set -euo pipefail
+identity=${CODESIGN_IDENTITY:-"Developer ID Application: Stig Bakken (HZ76GWS9YM)"}
+root=$(cd "$(dirname "$0")/.." && pwd)
+for f in "$@"; do
+  args=(--force --options runtime --timestamp --sign "$identity")
+  entitlements="$root/macos/entitlements/$(basename "$f").plist"
+  [[ -f $entitlements ]] && args+=(--entitlements "$entitlements")
+  codesign "${args[@]}" "$f"
+  codesign --verify --strict "$f"
+done
