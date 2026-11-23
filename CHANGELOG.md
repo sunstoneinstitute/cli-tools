@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- Added: oidc-browser tells op-who which command started the login, so op-who can show it next to the browser window.
+
 ## [0.1.1] - 2026-11-23
 
 - Changed: macOS binaries in the Homebrew bottles are signed with Developer ID and hardened runtime.

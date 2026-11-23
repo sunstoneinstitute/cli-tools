@@ -2,6 +2,7 @@
 // kubelogin's callback listener (127.0.0.1:8000) exits, then re-activate the
 // previously frontmost app. Chromium-family browsers and Safari are scriptable.
 // Anything else (Firefox) is just opened and cannot be closed afterwards.
+// Also notifies op-who (if running) so it can show which command needed the login.
 import AppKit
 import ArgumentParser
 import Foundation
@@ -37,14 +38,21 @@ struct OidcBrowser: ParsableCommand {
 
     private func open(_ urlString: String) throws {
         guard let url = URL(string: urlString) else { throw ValidationError("Invalid URL: \(urlString)") }
+        let requester = getppid()  // kubelogin
         let bundle = defaultBrowserBundleID()
         guard let script = openScript(bundle: bundle, url: urlString) else {
             NSWorkspace.shared.open(url)
+            notifyOpWho(requesterPID: requester, bounds: nil)
             return
         }
         let prev = NSWorkspace.shared.frontmostApplication
-        let window = try runAppleScript(script).int32Value
-        try spawnWatcher(bundle: bundle, window: Int(window), prevPid: prev?.processIdentifier)
+        let result = try runAppleScript(script)
+        let window = Int(result.atIndex(1)?.int32Value ?? 0)
+        let bounds = result.atIndex(2).map { list in
+            (1...max(list.numberOfItems, 1)).compactMap { list.atIndex($0).map { Int($0.int32Value) } }
+        }
+        notifyOpWho(requesterPID: requester, bounds: bounds)
+        try spawnWatcher(bundle: bundle, window: window, prevPid: prev?.processIdentifier)
     }
 
     /// Runs in a detached child: waits for the listener to go away, then cleans up.
@@ -72,7 +80,7 @@ struct OidcBrowser: ParsableCommand {
             return """
                 tell application id "\(bundle)"
                   make new document with properties {URL:\(quoted)}
-                  return id of front window
+                  return {id of front window, bounds of front window}
                 end tell
                 """
         }
@@ -81,7 +89,7 @@ struct OidcBrowser: ParsableCommand {
                 tell application id "\(bundle)"
                   set w to make new window
                   set URL of active tab of w to \(quoted)
-                  return id of w
+                  return {id of w, bounds of w}
                 end tell
                 """
         }
@@ -123,6 +131,26 @@ func runAppleScript(_ source: String) throws -> NSAppleEventDescriptor {
         throw RuntimeError("AppleScript failed: \(error?[NSAppleScript.errorMessage] ?? "unknown error")")
     }
     return result
+}
+
+/// userInfo for op-who's OIDC overlay. Protocol: op-who
+/// docs/superpowers/specs/2026-11-23-oidc-login-overlay-design.md.
+func opWhoUserInfo(requesterPID: pid_t, bounds: [Int]?) -> [String: String] {
+    var info = ["requesterPID": String(requesterPID)]
+    if let b = bounds, b.count == 4, b[2] > b[0], b[3] > b[1] {
+        info["frame"] = "\(b[0]),\(b[1]),\(b[2] - b[0]),\(b[3] - b[1])"
+    }
+    return info
+}
+
+/// Tells op-who, if running, which kubelogin process opened this login.
+func notifyOpWho(requesterPID: pid_t, bounds: [Int]?) {
+    DistributedNotificationCenter.default().postNotificationName(
+        Notification.Name("com.stigbakken.op-who.oidc-login"),
+        object: nil,
+        userInfo: opWhoUserInfo(requesterPID: requesterPID, bounds: bounds),
+        deliverImmediately: true
+    )
 }
 
 func isListening(port: UInt16) -> Bool {
