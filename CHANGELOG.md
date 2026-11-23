@@ -4,6 +4,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- Added: oidc-browser posts the distributed notification `ai.sunstoneinstitute.oidc-browser.login-opened` with the requesting PID and the browser window frame, so a listening app (such as op-who) can show which command started the login.
+- Fixed: oidc-browser still opens the login URL when it can't script the browser, for example when Automation permission is denied. The window then stays open after login.
+
 ## [0.1.1] - 2026-11-23
 
 - Changed: macOS binaries in the Homebrew bottles are signed with Developer ID and hardened runtime.

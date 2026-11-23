@@ -2,6 +2,8 @@
 // kubelogin's callback listener (127.0.0.1:8000) exits, then re-activate the
 // previously frontmost app. Chromium-family browsers and Safari are scriptable.
 // Anything else (Firefox) is just opened and cannot be closed afterwards.
+// Also posts a distributed notification (`loginOpenedNotification`) so any listening
+// app can show which command needed the login.
 import AppKit
 import ArgumentParser
 import Foundation
@@ -37,14 +39,29 @@ struct OidcBrowser: ParsableCommand {
 
     private func open(_ urlString: String) throws {
         guard let url = URL(string: urlString) else { throw ValidationError("Invalid URL: \(urlString)") }
+        let requester = getppid()  // kubelogin
         let bundle = defaultBrowserBundleID()
-        guard let script = openScript(bundle: bundle, url: urlString) else {
+        let prev = NSWorkspace.shared.frontmostApplication
+        var result: NSAppleEventDescriptor?
+        if let script = openScript(bundle: bundle, url: urlString) {
+            do {
+                result = try runAppleScript(script)
+            } catch {
+                // Usually Automation permission denied. Open without window control.
+                FileHandle.standardError.write(Data("oidc-browser: \(error)\n".utf8))
+            }
+        }
+        guard let result else {
             NSWorkspace.shared.open(url)
+            postLoginOpened(requesterPID: requester, bounds: nil)
             return
         }
-        let prev = NSWorkspace.shared.frontmostApplication
-        let window = try runAppleScript(script).int32Value
-        try spawnWatcher(bundle: bundle, window: Int(window), prevPid: prev?.processIdentifier)
+        let window = Int(result.atIndex(1)?.int32Value ?? 0)
+        let bounds = result.atIndex(2).map { list in
+            (1...max(list.numberOfItems, 1)).compactMap { list.atIndex($0).map { Int($0.int32Value) } }
+        }
+        postLoginOpened(requesterPID: requester, bounds: bounds)
+        try spawnWatcher(bundle: bundle, window: window, prevPid: prev?.processIdentifier)
     }
 
     /// Runs in a detached child: waits for the listener to go away, then cleans up.
@@ -72,7 +89,11 @@ struct OidcBrowser: ParsableCommand {
             return """
                 tell application id "\(bundle)"
                   make new document with properties {URL:\(quoted)}
-                  return id of front window
+                  set b to {}
+                  try
+                    set b to bounds of front window
+                  end try
+                  return {id of front window, b}
                 end tell
                 """
         }
@@ -81,7 +102,11 @@ struct OidcBrowser: ParsableCommand {
                 tell application id "\(bundle)"
                   set w to make new window
                   set URL of active tab of w to \(quoted)
-                  return id of w
+                  set b to {}
+                  try
+                    set b to bounds of w
+                  end try
+                  return {id of w, b}
                 end tell
                 """
         }
@@ -123,6 +148,29 @@ func runAppleScript(_ source: String) throws -> NSAppleEventDescriptor {
         throw RuntimeError("AppleScript failed: \(error?[NSAppleScript.errorMessage] ?? "unknown error")")
     }
     return result
+}
+
+/// Posted after the login window opens. All userInfo values are strings:
+/// - `requesterPID`: decimal PID of the process that ran oidc-browser (kubelogin).
+/// - `frame`: optional `"x,y,w,h"` of the browser window, CG global coordinates
+///   (top-left origin). Omitted when the browser cannot report its bounds.
+let loginOpenedNotification = Notification.Name("ai.sunstoneinstitute.oidc-browser.login-opened")
+
+func loginOpenedUserInfo(requesterPID: pid_t, bounds: [Int]?) -> [String: String] {
+    var info = ["requesterPID": String(requesterPID)]
+    if let b = bounds, b.count == 4, b[2] > b[0], b[3] > b[1] {
+        info["frame"] = "\(b[0]),\(b[1]),\(b[2] - b[0]),\(b[3] - b[1])"
+    }
+    return info
+}
+
+func postLoginOpened(requesterPID: pid_t, bounds: [Int]?) {
+    DistributedNotificationCenter.default().postNotificationName(
+        loginOpenedNotification,
+        object: nil,
+        userInfo: loginOpenedUserInfo(requesterPID: requesterPID, bounds: bounds),
+        deliverImmediately: true
+    )
 }
 
 func isListening(port: UInt16) -> Bool {
