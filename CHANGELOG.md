@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
 - Changed: macOS binaries in the Homebrew bottles are signed with Developer ID and hardened runtime.
 
 ## [0.1.0] - 2026-11-23
