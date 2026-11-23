@@ -41,13 +41,21 @@ struct OidcBrowser: ParsableCommand {
         guard let url = URL(string: urlString) else { throw ValidationError("Invalid URL: \(urlString)") }
         let requester = getppid()  // kubelogin
         let bundle = defaultBrowserBundleID()
-        guard let script = openScript(bundle: bundle, url: urlString) else {
+        let prev = NSWorkspace.shared.frontmostApplication
+        var result: NSAppleEventDescriptor?
+        if let script = openScript(bundle: bundle, url: urlString) {
+            do {
+                result = try runAppleScript(script)
+            } catch {
+                // Usually Automation permission denied. Open without window control.
+                FileHandle.standardError.write(Data("oidc-browser: \(error)\n".utf8))
+            }
+        }
+        guard let result else {
             NSWorkspace.shared.open(url)
             postLoginOpened(requesterPID: requester, bounds: nil)
             return
         }
-        let prev = NSWorkspace.shared.frontmostApplication
-        let result = try runAppleScript(script)
         let window = Int(result.atIndex(1)?.int32Value ?? 0)
         let bounds = result.atIndex(2).map { list in
             (1...max(list.numberOfItems, 1)).compactMap { list.atIndex($0).map { Int($0.int32Value) } }
