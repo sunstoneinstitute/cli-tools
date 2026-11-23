@@ -2,7 +2,8 @@
 // kubelogin's callback listener (127.0.0.1:8000) exits, then re-activate the
 // previously frontmost app. Chromium-family browsers and Safari are scriptable.
 // Anything else (Firefox) is just opened and cannot be closed afterwards.
-// Also notifies op-who (if running) so it can show which command needed the login.
+// Also posts a distributed notification (`loginOpenedNotification`) so any listening
+// app can show which command needed the login.
 import AppKit
 import ArgumentParser
 import Foundation
@@ -42,7 +43,7 @@ struct OidcBrowser: ParsableCommand {
         let bundle = defaultBrowserBundleID()
         guard let script = openScript(bundle: bundle, url: urlString) else {
             NSWorkspace.shared.open(url)
-            notifyOpWho(requesterPID: requester, bounds: nil)
+            postLoginOpened(requesterPID: requester, bounds: nil)
             return
         }
         let prev = NSWorkspace.shared.frontmostApplication
@@ -51,7 +52,7 @@ struct OidcBrowser: ParsableCommand {
         let bounds = result.atIndex(2).map { list in
             (1...max(list.numberOfItems, 1)).compactMap { list.atIndex($0).map { Int($0.int32Value) } }
         }
-        notifyOpWho(requesterPID: requester, bounds: bounds)
+        postLoginOpened(requesterPID: requester, bounds: bounds)
         try spawnWatcher(bundle: bundle, window: window, prevPid: prev?.processIdentifier)
     }
 
@@ -141,9 +142,13 @@ func runAppleScript(_ source: String) throws -> NSAppleEventDescriptor {
     return result
 }
 
-/// userInfo for op-who's OIDC overlay. Protocol: op-who
-/// docs/superpowers/specs/2026-11-23-oidc-login-overlay-design.md.
-func opWhoUserInfo(requesterPID: pid_t, bounds: [Int]?) -> [String: String] {
+/// Posted after the login window opens. All userInfo values are strings:
+/// - `requesterPID`: decimal PID of the process that ran oidc-browser (kubelogin).
+/// - `frame`: optional `"x,y,w,h"` of the browser window, CG global coordinates
+///   (top-left origin). Omitted when the browser cannot report its bounds.
+let loginOpenedNotification = Notification.Name("ai.sunstoneinstitute.oidc-browser.login-opened")
+
+func loginOpenedUserInfo(requesterPID: pid_t, bounds: [Int]?) -> [String: String] {
     var info = ["requesterPID": String(requesterPID)]
     if let b = bounds, b.count == 4, b[2] > b[0], b[3] > b[1] {
         info["frame"] = "\(b[0]),\(b[1]),\(b[2] - b[0]),\(b[3] - b[1])"
@@ -151,12 +156,11 @@ func opWhoUserInfo(requesterPID: pid_t, bounds: [Int]?) -> [String: String] {
     return info
 }
 
-/// Tells op-who, if running, which kubelogin process opened this login.
-func notifyOpWho(requesterPID: pid_t, bounds: [Int]?) {
+func postLoginOpened(requesterPID: pid_t, bounds: [Int]?) {
     DistributedNotificationCenter.default().postNotificationName(
-        Notification.Name("com.stigbakken.op-who.oidc-login"),
+        loginOpenedNotification,
         object: nil,
-        userInfo: opWhoUserInfo(requesterPID: requesterPID, bounds: bounds),
+        userInfo: loginOpenedUserInfo(requesterPID: requesterPID, bounds: bounds),
         deliverImmediately: true
     )
 }
