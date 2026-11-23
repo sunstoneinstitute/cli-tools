@@ -80,7 +80,11 @@ struct OidcBrowser: ParsableCommand {
             return """
                 tell application id "\(bundle)"
                   make new document with properties {URL:\(quoted)}
-                  return {id of front window, bounds of front window}
+                  set b to {}
+                  try
+                    set b to bounds of front window
+                  end try
+                  return {id of front window, b}
                 end tell
                 """
         }
@@ -89,7 +93,11 @@ struct OidcBrowser: ParsableCommand {
                 tell application id "\(bundle)"
                   set w to make new window
                   set URL of active tab of w to \(quoted)
-                  return {id of w, bounds of w}
+                  set b to {}
+                  try
+                    set b to bounds of w
+                  end try
+                  return {id of w, b}
                 end tell
                 """
         }
